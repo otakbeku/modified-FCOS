@@ -27,3 +27,4 @@ Mengukur dan meningkatkan efisiensi komputasi FCOS dengan menggunakan Network-in
 
 1. [FCOS](https://github.com/tianzhi0549/FCOS)
 2. [Res2net](https://github.com/Res2Net/Res2Net-PretrainedModels)
+3. [ShuffleNet](https://github.com/jaxony/ShuffleNet)
