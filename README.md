@@ -1,6 +1,6 @@
 # Modified FCOS
 
-Tugas pengenalan pola
+Tugas pengenalan pola.
 
 ## Summary
 
