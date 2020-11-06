@@ -4,10 +4,11 @@ import pandas as pd
 from pathlib import Path
 import numpy as np
 from tqdm import tqdm
+from pycocotools.coco import COCO
 
 
 class LoadLocalCOCO:
-    def __init__(self, file_path, coco_root):
+    def __init__(self, file_path, coco_root, category_names=['dog', 'cat']):
         with open(file_path, 'rb') as f:
             self.data = json.load(f)
         self.supercategories = set(x['supercategory']
@@ -18,6 +19,8 @@ class LoadLocalCOCO:
         self.image_df = pd.DataFrame(self.data['images'])
         self.annotation_df = pd.DataFrame(self.data['annotations'])
         self.root_folder = Path(coco_root)
+        self.coco = COCO(file_path)
+        self.excluded_image = set(self.coco.getCatIds(catNms=category_names))
 
     def get_category_id(self, category_name):
         return self.categories[category_name.lower()]
@@ -34,6 +37,8 @@ class LoadLocalCOCO:
         image_ids = self.annotation_df[self.annotation_df.category_id == idx_cat][[
             'image_id', 'bbox']]
         for frames in tqdm(image_ids.itertuples()):
+            if frames.image_id in self.excluded_image:
+                continue
             image = self._get_image_by_id(frames.image_id)
             image = self._crop_image(image, frames.bbox)
             images.append(image)
@@ -46,16 +51,18 @@ class LoadLocalCOCO:
             'image_id', 'bbox']]
         broken_ids = []
         for frames in tqdm(image_ids.itertuples()):
+            if frames.image_id in self.excluded_image:
+                continue
             image = self._get_image_by_id(frames.image_id)
             image = self._crop_image(image, frames.bbox)
             try:
                 image = cv2.resize(image, resize)
                 if flatten:
                     image = image.flatten()
+                images.append(image)
             except Exception as identifier:
                 broken_ids.append(frames.image_id)
                 continue
-            images.append(image)
         print(f'Broken images: {broken_ids} images')
         return images
 
