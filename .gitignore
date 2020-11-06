@@ -142,3 +142,6 @@ DTL/annotations/
 DTL/coco/
 DTL/train/
 DTL/val/
+
+*.pkl
+*.npy
