@@ -143,5 +143,14 @@ DTL/coco/
 DTL/train/
 DTL/val/
 
-*.pkl
 *.npy
+
+ANN/official
+ANN/cython_tutorial
+
+CNN_XGB/model_dump.ipynb
+CNN_XGB/expdump
+*.pt
+*.model
+*.pkl
+*.joblib
