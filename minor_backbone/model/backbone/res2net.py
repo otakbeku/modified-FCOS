@@ -96,7 +96,7 @@ class Bottle2neck(nn.Module):
 
 class Res2Net(nn.Module):
 
-    def __init__(self, block, layers, baseWidth = 26, scale = 4, num_classes=1000):
+    def __init__(self, block, layers, baseWidth = 26, scale = 4, num_classes=1000, if_include_top=False):
         self.inplanes = 64
         super(Res2Net, self).__init__()
         self.baseWidth = baseWidth
@@ -111,7 +111,10 @@ class Res2Net(nn.Module):
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
         self.avgpool = nn.AdaptiveAvgPool2d(1)
-        self.fc = nn.Linear(512 * block.expansion, num_classes)
+        if if_include_top:
+            self.fc = nn.Linear(512 * block.expansion, num_classes)
+        self.if_include_top=if_include_top
+
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -145,15 +148,33 @@ class Res2Net(nn.Module):
         x = self.maxpool(x)
 
         x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
+        out3 = self.layer2(x)
+        out4 = self.layer3(out3)
+        out5 = self.layer4(out4)
+        # x = self.layer2(x)
+        # x = self.layer3(x)
+        # x = self.layer4(x)
 
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
-
-        return x
+        if self.if_include_top:
+            x = self.avgpool(out5)
+            x = x.view(x.size(0), -1)
+            x = self.fc(x)
+            return x
+        else:
+            return (out3, out4, out5)
+        
+    
+    def freeze_stages(self, stage):
+        if stage >= 0:
+            self.bn1.eval()
+            for m in [self.conv1, self.bn1]:
+                for param in m.parameters():
+                    param.requires_grad = False
+        for i in range(1, stage + 1):
+            layer = getattr(self, 'layer{}'.format(i))
+            layer.eval()
+            for param in layer.parameters():
+                param.requires_grad = False
 
 
 def res2net50(pretrained=False, **kwargs):
