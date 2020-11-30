@@ -8,4 +8,4 @@ def model_downloader(backbone:str) -> nn.Module:
     elif backbone.__contains__('res2net'):
         return getattr(res2net, backbone)
     else:
-        raise 'Model not found'
+        return None
