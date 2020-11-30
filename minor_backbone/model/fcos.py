@@ -12,6 +12,7 @@ from .backbone.resnet import resnet50
 from .backbone.res2net import res2net50_48w_2s
 from .backbone.res2net import res2net50_26w_4s
 from .backbone.res2net import res2net50_14w_8s
+from .backbone import utils
 
 
 class FCOS(nn.Module):
@@ -20,14 +21,14 @@ class FCOS(nn.Module):
         super().__init__()
         if config is None:
             config = DefaultConfig
-        self.available_backbone = {
-            'resnet50': resnet50(pretrained=config.pretrained, if_include_top=False),
-            # Res2net
-            'res2net50_48w_2s': res2net50_48w_2s(pretrained=True),
-            'res2net50_26w_4s': res2net50_26w_4s(pretrained=True),
-            'res2net50_14w_8s': res2net50_14w_8s(pretrained=True),
-        }
-        self.backbone = self.available_backbone[backbone]
+        # self.available_backbone = {
+        #     'resnet50': resnet50(pretrained=config.pretrained, if_include_top=False),
+        #     # Res2net
+        #     'res2net50_48w_2s': res2net50_48w_2s(pretrained=True),
+        #     'res2net50_26w_4s': res2net50_26w_4s(pretrained=True),
+        #     'res2net50_14w_8s': res2net50_14w_8s(pretrained=True),
+        # }
+        self.backbone = utils.model_downloader(backbone=backbone)(pretrained=config.pretrained)
         self.fpn = FPN(config.fpn_out_channels, use_p5=config.use_p5)
         self.head = ClsCntRegHead(config.fpn_out_channels, config.class_num,
                                   config.use_GN_head, config.cnt_on_reg, config.prior)
