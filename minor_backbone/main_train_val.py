@@ -18,6 +18,7 @@ class Options():
     n_gpu = '0'
     valid_size = 0.2
     test_size = 0.2
+    backbone='res2net50_48w_2s'
 
 # kaggle
 COCO_TRAIN = ".../input/coco-2017-dataset/coco2017/train2017/"
@@ -26,8 +27,6 @@ COCO_ANNOT = "../input/coco-2017-dataset/coco2017/annotations/"
 
 opt = Options
 os.environ["CUDA_VISIBLE_DEVICES"]=opt.n_gpu
-BATCH_SIZE=opt.batch_size
-EPOCHS=opt.epochs
 torch.manual_seed(0)
 torch.cuda.manual_seed(0)
 torch.cuda.manual_seed_all(0)
@@ -35,6 +34,8 @@ np.random.seed(0)
 cudnn.benchmark = False
 cudnn.deterministic = True
 random.seed(0)
+BATCH_SIZE=opt.batch_size
+EPOCHS=opt.epochs
 transform = Transforms()
 # Dataset
 train_dataset=COCODataset(COCO_VAL,
@@ -62,9 +63,9 @@ valid_loader=torch.utils.data.DataLoader(valid_dataset,batch_size=BATCH_SIZE,shu
 test_loader=torch.utils.data.DataLoader(test_dataset,batch_size=BATCH_SIZE,shuffle=True,collate_fn=test_dataset.collate_fn,
                                          num_workers=opt.n_cpu,worker_init_fn = np.random.seed(0))
 print(f'Train: {len(train_loader)}\nValidation: {len(valid_loader)}\nTest: {len(test_loader)}')
-
-model=FCOSDetector(mode="training", backbone='res2net50_48w_2s').cuda()
+model=FCOSDetector(mode="training", backbone=opt.backbone).cuda()
 model = torch.nn.DataParallel(model)
+
 
 steps_per_epoch=len(train_dataset)//BATCH_SIZE
 TOTAL_STEPS=steps_per_epoch*EPOCHS
@@ -87,9 +88,11 @@ def lr_func(step):
             lr *= 0.1
     return float(lr)
 
+validation_loss_min = np.inf
 # Train
 for epoch in range(EPOCHS):
-    
+    validation_loss = 0.0
+
     # Train
     model.train()
     for epoch_step,data in enumerate(train_loader):
@@ -109,7 +112,7 @@ for epoch in range(EPOCHS):
         losses=model([batch_imgs,batch_boxes,batch_classes])
         loss=losses[-1]
         loss.mean().backward()
-        torch.nn.utils.clip_grad_norm(model.parameters(),3)
+        torch.nn.utils.clip_grad_norm_(model.parameters(),3)
         optimizer.step()
 
         end_time=time.time()
@@ -118,16 +121,9 @@ for epoch in range(EPOCHS):
             print("Train global_steps:%d epoch:%d steps:%d/%d cls_loss:%.4f cnt_loss:%.4f reg_loss:%.4f cost_time:%dms lr=%.4e total_loss:%.4f"%\
                 (GLOBAL_STEPS,epoch+1,epoch_step+1,steps_per_epoch,losses[0].mean(),losses[1].mean(),losses[2].mean(),cost_time,lr, loss.mean()))
 
+        
+        torch.cuda.empty_cache() # This should be safe, but might negatively affect the performance, since PyTorch might need to reallocate this memory again.
 
-        GLOBAL_STEPS+=1
-    torch.cuda.synchronize()
-    print()
-
-torch.cuda.empty_cache() # This should be safe, but might negatively affect the performance, since PyTorch might need to reallocate this memory again.
-
-# validation
-for epoch in range(EPOCHS):
-    # Eval
     model.eval()
     for epoch_step,data in enumerate(valid_loader):
         with torch.no_grad():
@@ -139,6 +135,7 @@ for epoch in range(EPOCHS):
             start_time=time.time()
             losses=model([batch_imgs,batch_boxes,batch_classes])
             loss=losses[-1]
+            validation_loss += loss.item()
 
             end_time=time.time()
             cost_time=int((end_time-start_time)*1000)
@@ -146,6 +143,13 @@ for epoch in range(EPOCHS):
                 print("Val global_steps:%d epoch:%d steps:%d/%d cls_loss:%.4f cnt_loss:%.4f reg_loss:%.4f cost_time:%dms total_loss:%.4f"%\
                     (GLOBAL_STEPS,epoch+1,epoch_step+1,steps_per_epoch,losses[0].mean(),losses[1].mean(),losses[2].mean(),cost_time, loss.mean()))
 
+    validation_loss /= len(valid_loader)
+    if validation_loss <= validation_loss_min:
+        print('\t\tValidation loss-nya lebih kecil!')
+        torch.save(model.state_dict(),"../working/model_{}_best.pth".format(opt.backbone))
+        blob = bucket.blob("fcos-default/model_{}_best.pth".format(opt.backbone))
+        blob.upload_from_filename("../working/model_{}_best.pth".format(opt.backbone))
+        validation_loss_min = validation_loss
 
         GLOBAL_STEPS+=1
     torch.cuda.synchronize()
