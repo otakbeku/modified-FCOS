@@ -26,6 +26,7 @@ COCO_TRAIN = ".../input/coco-2017-dataset/coco2017/train2017/"
 COCO_VAL = "../input/coco-2017-dataset/coco2017/val2017/"
 COCO_ANNOT = "../input/coco-2017-dataset/coco2017/annotations/"
 
+
 opt = Options
 os.environ["CUDA_VISIBLE_DEVICES"]=opt.n_gpu
 torch.manual_seed(0)
