@@ -1,6 +1,6 @@
 from .model.fcos import FCOSDetector
 import torch
-from .dataset.COCO_dataset import COCODataset
+from .model.utils import COCODataset
 from .model.coco_eval import COCOGenerator
 import math,time
 from .dataset.augment import Transforms
@@ -9,6 +9,7 @@ import numpy as np
 import random
 import torch.backends.cudnn as cudnn
 from torch.utils.data.sampler import SubsetRandomSampler
+from .model.utils import get_train_val_test
 
 class Options():
     #backbone
@@ -36,6 +37,7 @@ cudnn.benchmark = False
 cudnn.deterministic = True
 random.seed(0)
 transform = Transforms()
+(train_ids, valid_ids, test_ids) = get_train_val_test(COCO_ANNOT + 'instances_val2017.json')
 # Dataset
 train_dataset=COCODataset(COCO_VAL,
                           COCO_ANNOT + 'instances_val2017.json',transform=transform, sids=train_ids)
@@ -112,9 +114,10 @@ for epoch in range(EPOCHS):
         torch.nn.utils.clip_grad_norm(model.parameters(),3)
         optimizer.step()
 
-        end_time=time.time()
-        cost_time=int((end_time-start_time)*1000)
+        
         if(epoch_step % 200 == 0):
+            end_time=time.time()
+            cost_time=int((end_time-start_time)*1000)
             print("Train global_steps:%d epoch:%d steps:%d/%d cls_loss:%.4f cnt_loss:%.4f reg_loss:%.4f cost_time:%dms lr=%.4e total_loss:%.4f"%\
                 (GLOBAL_STEPS,epoch+1,epoch_step+1,steps_per_epoch,losses[0].mean(),losses[1].mean(),losses[2].mean(),cost_time,lr, loss.mean()))
 
@@ -140,9 +143,10 @@ for epoch in range(EPOCHS):
             losses=model([batch_imgs,batch_boxes,batch_classes])
             loss=losses[-1]
 
-            end_time=time.time()
-            cost_time=int((end_time-start_time)*1000)
+            
             if(epoch_step % 100 == 0):
+                end_time=time.time()
+                cost_time=int((end_time-start_time)*1000)
                 print("Val global_steps:%d epoch:%d steps:%d/%d cls_loss:%.4f cnt_loss:%.4f reg_loss:%.4f cost_time:%dms total_loss:%.4f"%\
                     (GLOBAL_STEPS,epoch+1,epoch_step+1,steps_per_epoch,losses[0].mean(),losses[1].mean(),losses[2].mean(),cost_time, loss.mean()))
 

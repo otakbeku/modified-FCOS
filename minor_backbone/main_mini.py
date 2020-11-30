@@ -1,13 +1,15 @@
-from model.fcos import FCOSDetector
+from .model.fcos import FCOSDetector
 import torch
-from dataset.COCO_dataset import COCODataset
+from .model.utils import COCODataset
+from .model.coco_eval import COCOGenerator
 import math,time
-from dataset.augment import Transforms
+from .dataset.augment import Transforms
 import os
 import numpy as np
 import random
 import torch.backends.cudnn as cudnn
 from torch.utils.data.sampler import SubsetRandomSampler
+from .model.utils import get_train_val_test
 
 class Options():
     #backbone
@@ -18,19 +20,15 @@ class Options():
     valid_size = 0.2
     test_size = 0.2
 
-# # kaggle
-# COCO_TRAIN = ".../input/coco-2017-dataset/coco2017/train2017/"
-# COCO_VAL = "../input/coco-2017-dataset/coco2017/val2017/"
-# COCO_ANNOT = "../input/coco-2017-dataset/coco2017/annotations/"
-
-# local
+# kaggle
 COCO_TRAIN = ".../input/coco-2017-dataset/coco2017/train2017/"
-COCO_VAL = "D:/FSR/COCO/val2017/"
-COCO_ANNOT = "D:/FSR/COCO/annotations_trainval2017/annotations/"
-
+COCO_VAL = "../input/coco-2017-dataset/coco2017/val2017/"
+COCO_ANNOT = "../input/coco-2017-dataset/coco2017/annotations/"
 
 opt = Options
 os.environ["CUDA_VISIBLE_DEVICES"]=opt.n_gpu
+BATCH_SIZE=opt.batch_size
+EPOCHS=opt.epochs
 torch.manual_seed(0)
 torch.cuda.manual_seed(0)
 torch.cuda.manual_seed_all(0)
@@ -39,66 +37,38 @@ cudnn.benchmark = False
 cudnn.deterministic = True
 random.seed(0)
 transform = Transforms()
-dataset=COCODataset(COCO_VAL,
-                          COCO_ANNOT + 'instances_val2017.json',transform=transform)
+(train_ids, valid_ids, test_ids) = get_train_val_test(COCO_ANNOT + 'instances_val2017.json')
+# Dataset
+train_dataset=COCODataset(COCO_VAL,
+                          COCO_ANNOT + 'instances_val2017.json',transform=transform, sids=train_ids)
+valid_dataset=COCODataset(COCO_VAL,
+                          COCO_ANNOT + 'instances_val2017.json',transform=transform, sids=valid_ids)
+test_dataset=COCODataset(COCO_VAL,
+                          COCO_ANNOT + 'instances_val2017.json',transform=transform, sids=test_ids)
 
-dataset_size = len(dataset)
-# indices = list(torch.randperm((dataset_size)))
-indices = list(range(dataset_size))
-np.random.shuffle(indices)
-# print(indices)
+# Generator
+train_generator = COCOGenerator(COCO_VAL,
+                          COCO_ANNOT + 'instances_val2017.json', sids=train_ids)
+valid_generator = COCOGenerator(COCO_VAL,
+                          COCO_ANNOT + 'instances_val2017.json', sids=valid_ids)
+test_generator = COCOGenerator(COCO_VAL,
+                          COCO_ANNOT + 'instances_val2017.json', sids=test_ids)
 
-test_split = int(np.floor(opt.test_size * dataset_size))
-train_indices, test_indices = indices[test_split:], indices[:test_split]
+# DataLoader
+train_loader=torch.utils.data.DataLoader(train_dataset,batch_size=BATCH_SIZE,shuffle=True,collate_fn=train_dataset.collate_fn,
+                                         num_workers=opt.n_cpu,worker_init_fn = np.random.seed(0))
 
-train_size = len(train_indices)
-valid_split = int(np.floor((1 - opt.valid_size) * train_size))
-train_indices, valid_indices = train_indices[:valid_split], train_indices[valid_split:]
+valid_loader=torch.utils.data.DataLoader(valid_dataset,batch_size=BATCH_SIZE,shuffle=True,collate_fn=valid_dataset.collate_fn,
+                                         num_workers=opt.n_cpu,worker_init_fn = np.random.seed(0))
 
-# print(len(train_indices), len(valid_sampler), len(test_sampler))
-
-train_sampler = SubsetRandomSampler(train_indices)
-valid_sampler = SubsetRandomSampler(valid_indices)
-test_sampler = SubsetRandomSampler(test_indices)
-
-# pin memory buat training aja, terus empty cache
-# nggak disarankan disatu operasi
-train_loader = torch.utils.data.DataLoader(
-    dataset,
-    batch_size=opt.batch_size,
-    sampler=train_sampler,
-    collate_fn=dataset.collate_fn,
-    num_workers=opt.n_cpu,
-    worker_init_fn = np.random.seed(0), 
-#     pin_memory=True
-)
-
-valid_loader = torch.utils.data.DataLoader(
-    dataset,
-    batch_size=opt.batch_size,
-    sampler=valid_sampler,
-    collate_fn=dataset.collate_fn,
-    num_workers=opt.n_cpu,
-    worker_init_fn = np.random.seed(0), 
-#     pin_memory=True
-)
-
-test_loader = torch.utils.data.DataLoader(
-    dataset,
-    batch_size=opt.batch_size,
-    sampler=test_sampler,
-    collate_fn=dataset.collate_fn,
-    num_workers=opt.n_cpu,
-    worker_init_fn = np.random.seed(0), 
-#     pin_memory=True
-)
+test_loader=torch.utils.data.DataLoader(test_dataset,batch_size=BATCH_SIZE,shuffle=True,collate_fn=test_dataset.collate_fn,
+                                         num_workers=opt.n_cpu,worker_init_fn = np.random.seed(0))
+print(f'Train: {len(train_loader)}\nValidation: {len(valid_loader)}\nTest: {len(test_loader)}')
 
 model=FCOSDetector(mode="training", backbone='res2net50_48w_2s').cuda()
 model = torch.nn.DataParallel(model)
-BATCH_SIZE=opt.batch_size
-EPOCHS=opt.epochs
 
-steps_per_epoch=len(dataset)//BATCH_SIZE
+steps_per_epoch=len(train_dataset)//BATCH_SIZE
 TOTAL_STEPS=steps_per_epoch*EPOCHS
 WARMUP_STEPS=500
 WARMUP_FACTOR = 1.0 / 3.0
@@ -118,11 +88,10 @@ def lr_func(step):
                 break
             lr *= 0.1
     return float(lr)
-    
-# Train
-model.train()
-data = next(iter(train_loader))
 
+
+# train
+data = next(iter(train_loader))
 
 batch_imgs,batch_boxes,batch_classes=data
 batch_imgs=batch_imgs.cuda()
@@ -151,5 +120,6 @@ print("Train global_steps:%d epoch:%d steps:%d/%d cls_loss:%.4f cnt_loss:%.4f re
 GLOBAL_STEPS+=1
 torch.cuda.synchronize()
 print()
+
 
 torch.cuda.empty_cache() # This should be safe, but might negatively affect the performance, since PyTorch might need to reallocate this memory again.
