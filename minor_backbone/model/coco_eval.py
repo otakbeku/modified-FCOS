@@ -6,6 +6,7 @@ from tqdm import tqdm
 from torchvision.datasets import CocoDetection
 from torchvision import transforms
 import cv2
+import time
 
 
 class COCOGenerator(CocoDetection):
@@ -125,10 +126,14 @@ def evaluate_coco(generator, model, threshold=0.05, json_id=1):
     # start collecting results
     results = []
     image_ids = []
+    cost_time = []
     for index in tqdm(range(len(generator))):
         img, gt_boxes, gt_labels, scale = generator[index]
         # run network
+        start_time = time.time()
         scores, labels, boxes = model(img.unsqueeze(dim=0).cuda())
+        end_time=time.time()
+        cost_time.append(int((end_time-start_time)*1000))
         scores = scores.detach().cpu().numpy()
         labels = labels.detach().cpu().numpy()
         boxes = boxes.detach().cpu().numpy()
@@ -175,4 +180,4 @@ def evaluate_coco(generator, model, threshold=0.05, json_id=1):
     coco_eval.evaluate()
     coco_eval.accumulate()
     coco_eval.summarize()
-    return coco_eval.stats
+    return coco_eval.stats, cost_time
